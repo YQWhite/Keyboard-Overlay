@@ -1,0 +1,119 @@
+{
+    "scale": 1.7,
+    "autoHide": {
+        "enabled": true,
+        "compact": true,
+        "compactDir": "center",
+        "sessionCount": true
+    },
+    "groups": {
+        "left": {
+            "enabled": true,
+            "x": 5.5,
+            "y": 79.7,
+            "direction": "right",
+            "keys": [
+                {
+                    "key": "W",
+                    "color": "#39C5BB"
+                },
+                {
+                    "key": "A",
+                    "color": "#39C5BB"
+                },
+                {
+                    "key": "S",
+                    "color": "#39C5BB"
+                },
+                {
+                    "key": "D",
+                    "color": "#39C5BB"
+                }
+            ],
+            "name": "区域1"
+        },
+        "middle": {
+            "enabled": true,
+            "x": 42.7,
+            "y": 88.7,
+            "direction": "up",
+            "keys": [
+                {
+                    "key": "Q",
+                    "color": "#FF69B4"
+                },
+                {
+                    "key": "U",
+                    "color": "#FF69B4"
+                }
+            ],
+            "name": "区域3"
+        },
+        "right": {
+            "enabled": true,
+            "x": 94.5,
+            "y": 79.7,
+            "direction": "left",
+            "keys": [
+                {
+                    "key": "I",
+                    "color": "#39C5BB"
+                },
+                {
+                    "key": "J",
+                    "color": "#39C5BB"
+                },
+                {
+                    "key": "K",
+                    "color": "#39C5BB"
+                },
+                {
+                    "key": "L",
+                    "color": "#39C5BB"
+                }
+            ],
+            "name": "区域2"
+        },
+        "group_1788402512253": {
+            "name": "区域4",
+            "enabled": true,
+            "x": 57.3,
+            "y": 88.7,
+            "direction": "up",
+            "keys": [
+                {
+                    "key": "E",
+                    "color": "#FF69B4"
+                },
+                {
+                    "key": "O",
+                    "color": "#FF69B4"
+                }
+            ]
+        }
+    },
+    "left_keys": [
+        "W",
+        "A",
+        "S",
+        "D"
+    ],
+    "right_keys": [
+        "I",
+        "J",
+        "K",
+        "L"
+    ],
+    "bottom_left_keys": [
+        "Q",
+        "U"
+    ],
+    "bottom_right_keys": [
+        "E",
+        "O"
+    ],
+    "left_color": "#39c5bb",
+    "right_color": "#39c5bb",
+    "bottom_left_color": "#ff69b4",
+    "bottom_right_color": "#ff69b4"
+}

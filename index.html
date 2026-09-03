@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Keyboard Overlay</title>
+    <style>
+        :root {
+            --key-size: 48px;
+            --trail-length: 250px;
+            --global-scale: 1.0;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; }
+        body { background-color: transparent; font-family: 'Segoe UI', sans-serif; color: white; overflow: hidden; }
+        /* 固定 16:9 舞台: 无论 OBS 源画幅多大，自动等比缩放居中，布局与预览一致 */
+        #stage { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; transform-origin: center center; }
+
+        .group-container {
+            position: absolute;
+            transform: translate(-50%, -50%) scale(var(--global-scale));
+            display: flex; gap: 8px; z-index: 10;
+        }
+        .group-dir-right, .group-dir-left { flex-direction: column; }
+        .group-dir-up, .group-dir-down { flex-direction: row; }
+
+        .key-wrapper { display: flex; align-items: center; justify-content: center; gap: 6px; position: relative; transition: opacity .35s ease; transform: var(--off, none); }
+        .key-wrapper.anim { transition: opacity .35s ease, transform .35s ease; }
+        .dir-right { flex-direction: row; }        
+        .dir-left { flex-direction: row-reverse; } 
+        .dir-down { flex-direction: column; }      
+        .dir-up { flex-direction: column-reverse;} 
+
+        /* 自动补位: 区域容器两端/居中靠拢(compact-* 类仅在补位模式+固定尺寸时出现，不影响正常排列) */
+        .group-container.compact-start { justify-content: flex-start; }
+        .group-container.compact-center { justify-content: center; }
+        .group-container.compact-end { justify-content: flex-end; }
+
+        /* 数据舱 */
+        .stats {
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(0, 0, 0, 0.85); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px;
+            font-family: 'Consolas', monospace; box-shadow: 0 2px 4px rgba(0,0,0,0.6); z-index: 3;
+        }
+        .dir-right .stats, .dir-left .stats { flex-direction: column; width: 26px; padding: 4px 0px; }
+        .dir-up .stats, .dir-down .stats { flex-direction: row; height: 26px; padding: 0px 6px; gap: 4px;}
+        
+        .cps-val { color: var(--color); font-weight: bold; font-size: 13px; text-shadow: 0 0 4px var(--color); }
+        .label { font-size: 8px; color: #aaa; margin: 1px 0; }
+        .count-val { color: #eee; font-size: 11px; }
+        .dir-right .divider, .dir-left .divider { width: 14px; height: 1px; background: rgba(255,255,255,0.3); margin-bottom: 2px; }
+        .dir-up .divider, .dir-down .divider { width: 1px; height: 14px; background: rgba(255,255,255,0.3); margin: 0 2px; }
+
+        /* ================= 按键本体 ================= */
+        .key-block { width: var(--key-size); height: var(--key-size); position: relative; }
+        .key-visual {
+            position: absolute; inset: 0; display: flex; justify-content: center; align-items: center;
+            background-color: rgba(0, 0, 0, 0.8); border: 2px solid var(--color); border-radius: 6px;
+            z-index: 2; 
+            transition: transform 0.08s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.08s, background-color 0.08s;
+        }
+        .key-name { position: relative; z-index: 2; font-size: 20px; font-weight: bold; color: #fff; text-shadow: 0 0 2px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.7); transition: color 0.05s, text-shadow 0.05s; }
+
+        .key-block.active .key-visual { transform: scale(0.9, 0.85); box-shadow: 0 0 15px var(--color); background-color: var(--color); border-color: #fff; }
+        .key-block.active .key-name { color: #111; text-shadow: none; }
+
+        /* ================= 拖影位置与渐变修复 ================= */
+        /* 绝对定位于按键实体之外，根部提供 5% 的淡入渐变，尾部 20% 淡出 */
+        .trail-canvas { position: absolute; z-index: 1; pointer-events: none; }
+        
+        .dir-right .trail-canvas { left: calc(100% - 4px); top: 0; width: var(--trail-length); height: 100%; -webkit-mask-image: linear-gradient(to right, transparent 0%, black 5%, black 80%, transparent 100%); mask-image: linear-gradient(to right, transparent 0%, black 5%, black 80%, transparent 100%); }
+        .dir-left .trail-canvas  { right: calc(100% - 4px); top: 0; width: var(--trail-length); height: 100%; -webkit-mask-image: linear-gradient(to left, transparent 0%, black 5%, black 80%, transparent 100%); mask-image: linear-gradient(to left, transparent 0%, black 5%, black 80%, transparent 100%); }
+        .dir-down .trail-canvas  { top: calc(100% - 4px); left: 0; width: 100%; height: var(--trail-length); -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 80%, transparent 100%); mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 80%, transparent 100%); }
+        .dir-up .trail-canvas    { bottom: calc(100% - 4px); left: 0; width: 100%; height: var(--trail-length); -webkit-mask-image: linear-gradient(to top, transparent 0%, black 5%, black 80%, transparent 100%); mask-image: linear-gradient(to top, transparent 0%, black 5%, black 80%, transparent 100%); }
+    </style>
+</head>
+<body>
+    <div id="stage">
+        <div id="app"></div>
+    </div>
+
+    <script>
+        let keyManagers = {};
+        let autoHideCfg = { enabled: false, compact: false, compactDir: 'center', sessionCount: false };
+        const HIDE_OFFSET = { fade: 'none', up: 'translateY(-46px)', down: 'translateY(46px)', left: 'translateX(-46px)', right: 'translateX(46px)' };
+        
+        class KeyVisualizer {
+            constructor(key, direction, color, containerId, opts = {}) {
+                this.key = key; this.direction = direction; this.color = color; this.speed = 0.5;
+                this.isPressed = false; this.blocks = []; this.clickTimes = []; 
+                this.totalCount = parseInt(localStorage.getItem(`PD_COUNT_${this.key}`)) || 0;
+                this.hideAnim = opts.hideAnim || 'fade';
+                this.showAnim = opts.showAnim || 'fade';
+                this.autoHideKey = opts.autoHideKey !== false; // 该按键是否参与自动显隐(默认开启)
+                this.sessionCount = 0;   // 单次显示期间的计数
+                this.isHidden = false;
+                this.lastActive = performance.now();
+                this.hideTimer = null;
+                this.initDOM(containerId); this.startAnimation();
+            }
+
+            initDOM(containerId) {
+                this.wrapper = document.createElement('div');
+                this.wrapper.className = `key-wrapper dir-${this.direction}`;
+                this.wrapper.style.setProperty('--color', this.color);
+
+                this.statsEl = document.createElement('div');
+                this.statsEl.className = 'stats';
+                this.updateStatsHTML(0, this.totalCount);
+
+                this.keyElement = document.createElement('div');
+                this.keyElement.className = 'key-block';
+
+                this.canvas = document.createElement('canvas');
+                this.canvas.className = 'trail-canvas';
+                const isVertical = (this.direction === 'up' || this.direction === 'down');
+                // 设置内部绘图分辨率
+                this.canvas.width = isVertical ? 48 : 250; 
+                this.canvas.height = isVertical ? 250 : 48; 
+                this.ctx = this.canvas.getContext('2d');
+
+                const visualEl = document.createElement('div');
+                visualEl.className = 'key-visual';
+                visualEl.innerHTML = `<div class="key-name">${this.key}</div>`;
+
+                this.keyElement.appendChild(this.canvas);
+                this.keyElement.appendChild(visualEl);
+                this.wrapper.appendChild(this.statsEl);
+                this.wrapper.appendChild(this.keyElement);
+                document.getElementById(containerId).appendChild(this.wrapper);
+            }
+
+            // 单独计数开启时只显示本次显示期间的计数
+            displayCount() { return autoHideCfg.sessionCount ? this.sessionCount : this.totalCount; }
+
+            updateStatsHTML(cps, count) {
+                this.statsEl.innerHTML = `
+                    <span class="cps-val">${cps}</span>
+                    ${(this.direction==='up'||this.direction==='down') ? '' : '<span class="label">CPS</span>'}
+                    <div class="divider"></div>
+                    <span class="count-val">${count}</span>
+                `;
+            }
+
+            updateStats() {
+                const now = performance.now();
+                this.clickTimes = this.clickTimes.filter(t => now - t < 1000);
+                this.updateStatsHTML(this.clickTimes.length, this.displayCount());
+            }
+
+            resetStats() {
+                this.totalCount = 0; this.sessionCount = 0; this.clickTimes = []; this.blocks = [];
+                localStorage.removeItem(`PD_COUNT_${this.key}`);
+                this.updateStats();
+            }
+
+            // ================= 自动隐藏 / 显示(支持中断续播，不突变) =================
+            hide() {
+                if (this.isHidden) return;
+                this.isHidden = true;
+                const w = this.wrapper;
+                const off = HIDE_OFFSET[this.hideAnim] || 'none';
+                w.classList.add('anim');
+                w.style.pointerEvents = 'none'; // 显隐期间防误触/重叠交互
+                w.style.setProperty('--off', off);
+                w.style.opacity = '0';
+                // 补位: 给足 350ms 动画时间后，下一帧脱离布局并立即补位(同一帧完成测量+脱离)
+                clearTimeout(this.hideTimer);
+                this.hideTimer = setTimeout(() => {
+                    if (this.isHidden && autoHideCfg.compact) {
+                        requestAnimationFrame(() => {
+                            squeezeReflow(w.parentElement, () => { w.style.display = 'none'; }, w);
+                        });
+                    }
+                }, 350);
+            }
+
+            show() {
+                if (!this.isHidden) return;
+                this.isHidden = false;
+                clearTimeout(this.hideTimer);
+                const w = this.wrapper;
+                if (autoHideCfg.sessionCount) { this.sessionCount = 0; this.updateStats(); }
+                const off = HIDE_OFFSET[this.showAnim] || 'none';
+                w.classList.add('anim');
+                w.style.pointerEvents = 'none';
+                if (autoHideCfg.compact && w.style.display === 'none') {
+                    // 冷启动: 先以偏移状态插入，同一帧补位测量，下一帧滑入
+                    w.style.setProperty('--off', off);
+                    w.style.opacity = '0';
+                    requestAnimationFrame(() => {
+                        squeezeReflow(w.parentElement, () => { w.style.display = ''; }, w);
+                        requestAnimationFrame(() => {
+                            w.style.setProperty('--off', 'none');
+                            w.style.opacity = '1';
+                        });
+                    });
+                } else {
+                    // 中断续播(仍在淡出/滑出中): 从当前位置直接反向，不突变
+                    w.style.setProperty('--off', 'none');
+                    w.style.opacity = '1';
+                }
+                // 显隐动画结束后恢复交互
+                setTimeout(() => { w.style.pointerEvents = ''; }, 400);
+            }
+
+            checkIdle(now) {
+                if (!autoHideCfg.enabled || this.isHidden || !this.autoHideKey) return;
+                if (now - this.lastActive > 30000) this.hide();
+            }
+
+            pressDown() {
+                if (this.isPressed) return;
+                this.lastActive = performance.now();
+                if (this.isHidden) this.show();
+                this.isPressed = true; this.keyElement.classList.add('active');
+                this.totalCount++; this.sessionCount++; this.clickTimes.push(performance.now());
+                localStorage.setItem(`PD_COUNT_${this.key}`, this.totalCount);
+                this.updateStats();
+                this.currentBlock = { start: performance.now(), end: null };
+                this.blocks.push(this.currentBlock);
+            }
+
+            pressUp() {
+                if (!this.isPressed) return;
+                this.isPressed = false; this.keyElement.classList.remove('active');
+                if (this.currentBlock) { this.currentBlock.end = performance.now(); this.currentBlock = null; }
+            }
+
+            startAnimation() {
+                const draw = () => {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.ctx.fillStyle = this.color;
+                    const now = performance.now();
+
+                    for (let i = this.blocks.length - 1; i >= 0; i--) {
+                        let b = this.blocks[i];
+                        let frontEdge = (now - b.start) * this.speed;
+                        let backEdge = b.end ? (now - b.end) * this.speed : 0;
+                        let length = frontEdge - backEdge;
+                        if (length < 2) length = 2; 
+
+                        let x = 0, y = 0, w = 0, h = 0;
+                        let maxW = this.canvas.width, maxH = this.canvas.height;
+                        
+                        if (this.direction === 'right') {
+                            if (backEdge > maxW) { this.blocks.splice(i, 1); continue; }
+                            x = backEdge; w = length; h = maxH;
+                        } else if (this.direction === 'left') {
+                            if (backEdge > maxW) { this.blocks.splice(i, 1); continue; }
+                            x = maxW - frontEdge; w = length; h = maxH;
+                        } else if (this.direction === 'down') {
+                            if (backEdge > maxH) { this.blocks.splice(i, 1); continue; }
+                            y = backEdge; w = maxW; h = length;
+                        } else if (this.direction === 'up') {
+                            if (backEdge > maxH) { this.blocks.splice(i, 1); continue; }
+                            y = maxH - frontEdge; w = maxW; h = length;
+                        }
+
+                        // 退回上一版的简单实心圆角画法
+                        this.ctx.beginPath();
+                        this.ctx.roundRect(x, y, w, h, 4);
+                        this.ctx.fill();
+                    }
+                    if(!this.isPressed && this.clickTimes.length > 0) this.updateStats();
+                    requestAnimationFrame(draw);
+                };
+                requestAnimationFrame(draw);
+            }
+        }
+
+        // 补位挤压动画(FLIP): 位移 + 挤压拉伸形变合并在一个 transform 里，随粘性回弹同步恢复
+        // excludeEl: 正在显隐的按键(其 --off 偏移不是布局位移，跳过避免误判)
+        function squeezeReflow(container, mutate, excludeEl) {
+            if (!container) { mutate(); return; }
+            const items = [...container.children].filter(el => el.style.display !== 'none' && el !== excludeEl);
+            const before = new Map(items.map(el => [el, el.getBoundingClientRect()]));
+            mutate();
+            items.forEach(el => {
+                if (el.style.display === 'none') return;
+                const b = before.get(el);
+                const a = el.getBoundingClientRect();
+                const dx = b.left - a.left, dy = b.top - a.top;
+                if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+
+                // 起始帧: 瞬移回旧位置，并按位移方向施加挤压/拉伸形变(上限 14%)
+                const sq = Math.min(0.14, (Math.abs(dx) + Math.abs(dy)) / 650);
+                const horiz = Math.abs(dx) >= Math.abs(dy);
+                const sx = horiz ? 1 + sq : 1 - sq;   // 水平移动 → 横向被拉长
+                const sy = horiz ? 1 - sq : 1 + sq;   // 垂直移动 → 纵向被拉长
+                el.style.transition = 'none';
+                el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+
+                // 归位帧: 慢速粘性回弹曲线，位移与形变同步弹回(0.65s，回弹明显)
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        el.style.transition = 'transform .65s cubic-bezier(.25,1.5,.35,1)';
+                        el.style.transform = 'translate(0px, 0px) scale(1, 1)';
+                    });
+                });
+                // 兜底清理(不依赖 transitionend，动画被打断也能恢复)
+                setTimeout(() => { el.style.transition = ''; el.style.transform = ''; }, 730);
+            });
+        }
+
+        // 将 1920x1080 舞台等比缩放进任意画幅并保持 16:9
+        function fitStage() {
+            const s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+            document.getElementById('stage').style.transform = `translate(-50%, -50%) scale(${s})`;
+        }
+        window.addEventListener('resize', fitStage);
+        fitStage();
+
+        function initLayout(config) {
+            document.documentElement.style.setProperty('--global-scale', config.scale || 1.0);
+            autoHideCfg = Object.assign({ enabled: false, compact: false, compactDir: 'center', sessionCount: false }, config.autoHide || {});
+            if (!autoHideCfg.enabled) { autoHideCfg.compact = false; autoHideCfg.sessionCount = false; } // 兜底防bug
+            const app = document.getElementById('app');
+            app.innerHTML = '';
+            keyManagers = {};
+
+            Object.keys(config.groups).forEach(groupId => {
+                const group = config.groups[groupId];
+                if (!group.enabled) return;
+
+                const gDiv = document.createElement('div');
+                gDiv.id = `group-${groupId}`;
+                gDiv.className = `group-container group-dir-${group.direction}` + (autoHideCfg.compact ? ` compact-${autoHideCfg.compactDir}` : '');
+                gDiv.style.left = `${group.x}%`;
+                gDiv.style.top = `${group.y}%`;
+                // 补位模式: 固定容器为满键尺寸，按键隐藏后剩余按键按方向靠拢
+                if (autoHideCfg.compact) {
+                    const n = Math.max(1, group.keys.length);
+                    const vertical = (group.direction === 'right' || group.direction === 'left');
+                    const fullMain = n * 48 + (n - 1) * 8;
+                    if (vertical) { gDiv.style.height = fullMain + 'px'; gDiv.style.width = '80px'; }
+                    else { gDiv.style.width = fullMain + 'px'; gDiv.style.height = '80px'; }
+                }
+                app.appendChild(gDiv);
+
+                group.keys.forEach(k => {
+                    keyManagers[k.key] = new KeyVisualizer(k.key, group.direction, k.color, gDiv.id, { hideAnim: k.hideAnim, showAnim: k.showAnim, autoHideKey: k.autoHide !== false });
+                });
+            });
+
+            // 自动隐藏开启时，参与显隐的按键初始即为隐藏态(无动画；触发时自动显示)
+            if (autoHideCfg.enabled) {
+                Object.values(keyManagers).forEach(km => {
+                    if (!km.autoHideKey) return;
+                    km.isHidden = true;
+                    const w = km.wrapper;
+                    w.style.opacity = '0';
+                    if (autoHideCfg.compact) w.style.display = 'none';
+                    else { const off = HIDE_OFFSET[km.hideAnim] || 'none'; if (off !== 'none') w.style.setProperty('--off', off); }
+                });
+            }
+        }
+
+        // 每秒检查一次按键闲置状态(30秒无输入自动隐藏)
+        setInterval(() => {
+            const now = performance.now();
+            Object.values(keyManagers).forEach(km => km.checkIdle(now));
+        }, 1000);
+
+        function connect() {
+            const ws = new WebSocket('ws://localhost:8765');
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'config') initLayout(data.data);
+                else if (data.type === 'key' && keyManagers[data.key]) {
+                    data.state === 'down' ? keyManagers[data.key].pressDown() : keyManagers[data.key].pressUp();
+                }
+                else if (data.type === 'reset_stats') {
+                    Object.values(keyManagers).forEach(km => km.resetStats());
+                }
+                else if (data.type === 'refresh') {
+                    location.reload();
+                }
+            };
+            ws.onclose = () => setTimeout(connect, 1000);
+        }
+        connect();
+    </script>
+</body>
+</html>

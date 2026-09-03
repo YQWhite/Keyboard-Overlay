@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>按键映射高级控制台</title>
+    <style>
+        :root { --accent: #39C5BB; --border: #2b2b33; --panel: #17171d; --text-dim: #9a9aa5; }
+        * { box-sizing: border-box; }
+        body { --sbw: 214px; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: #101014; color: #ececf1; margin: 0; min-height: 100vh; }
+        body.sb-collapsed { --sbw: 60px; }
+
+        /* ================= 左侧导航栏 ================= */
+        #sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: var(--sbw); background: #141419; border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 200; transition: width .2s; overflow: hidden; }
+        .side-logo { display: flex; align-items: center; gap: 10px; padding: 18px 16px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+        .logo-icon { font-size: 20px; }
+        .side-logo .side-text { font-size: 17px; font-weight: 800; letter-spacing: 1px; background: linear-gradient(90deg, #39C5BB, #9beee6); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .side-nav { flex: 1; padding: 12px 8px; display: flex; flex-direction: column; gap: 4px; }
+        .nav-item { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 8px; cursor: pointer; color: var(--text-dim); font-size: 14px; font-weight: 600; white-space: nowrap; border: 1px solid transparent; transition: .15s; }
+        .nav-item:hover { background: #1d1d24; color: #eee; }
+        .nav-item.active { background: rgba(57,197,187,.12); border-color: rgba(57,197,187,.35); color: var(--accent); }
+        .nav-icon { font-size: 17px; width: 22px; text-align: center; flex-shrink: 0; }
+        .side-collapse { display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-top: 1px solid var(--border); cursor: pointer; color: var(--text-dim); font-size: 13px; white-space: nowrap; }
+        .side-collapse:hover { color: #eee; background: #1d1d24; }
+        #collapse-icon { transition: transform .2s; display: inline-block; }
+        body.sb-collapsed .side-text { display: none; }
+        body.sb-collapsed .nav-item, body.sb-collapsed .side-collapse, body.sb-collapsed .side-logo { justify-content: center; gap: 0; }
+        body.sb-collapsed #collapse-icon { transform: rotate(180deg); }
+
+        /* ================= 主内容区 ================= */
+        .main { margin-left: var(--sbw); padding: 18px 24px 100px; min-height: 100vh; transition: margin .2s; background: radial-gradient(1000px 480px at 60% -140px, #1c1c25, #101014); }
+        .main-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+        .page-title { font-size: 20px; font-weight: 800; letter-spacing: .5px; }
+        .header-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+        .status-pill { font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border); background: var(--panel); white-space: nowrap; }
+        .status-pill.on { color: #2ee66e; border-color: rgba(46,230,110,.35); }
+        .status-pill.off { color: #ff5f5f; border-color: rgba(255,95,95,.35); }
+
+        .page { display: none; animation: fadeIn .18s ease; }
+        .page.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+        /* 布局页 */
+        .layout-wrap { max-width: 1500px; margin: 0 auto; }
+        .layout-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; background: var(--panel); border: 1px solid var(--border); padding: 10px 14px; border-radius: 10px; margin-bottom: 12px; }
+        .mirror-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--text-dim); }
+        .mirror-tools b#sel-name { color: var(--accent); font-weight: 700; }
+        .mirror-tools select { background: #1c1c22; color: #eee; border: 1px solid #3a3a44; border-radius: 5px; padding: 4px 6px; max-width: 130px; font-size: 12px; }
+        .mirror-tools button { background: #2c2c34; color: #ddd; border: 1px solid #3a3a44; border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 12px; transition: .15s; }
+        .mirror-tools button:hover { border-color: #ff3df0; color: #fff; }
+
+        /* 设置页 */
+        .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 14px; max-width: 940px; }
+        .settings-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; }
+        .settings-card h3 { margin: 0 0 8px; font-size: 15px; color: var(--accent); }
+        .settings-desc { font-size: 12.5px; color: var(--text-dim); margin: 0 0 14px; line-height: 1.7; }
+        .settings-card ul { margin: 0; padding-left: 18px; font-size: 12.5px; color: #b9b9c4; line-height: 2.1; }
+        .settings-card b { color: #eee; }
+
+        .scale-control { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-dim); }
+        input[type="range"] { accent-color: var(--accent); width: 150px; cursor: pointer; }
+        .scale-badge { color: var(--accent); font-weight: 700; min-width: 46px; text-align: center; background: rgba(57,197,187,.12); border: 1px solid rgba(57,197,187,.25); border-radius: 6px; padding: 2px 6px; font-size: 13px; }
+        .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .btn { padding: 7px 14px; border: none; border-radius: 7px; cursor: pointer; font-weight: 600; font-size: 13px; color: #fff; transition: filter .15s, transform .15s; }
+        .btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
+        .btn-add { background: #27ae60; }
+        .btn-reset { background: #e74c3c; }
+        .btn-refresh { background: #3498db; }
+
+        /* ================= 预览画布 ================= */
+        .canvas-container { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; user-select: none;
+            background-color: #0b0b0e; border: 1px solid var(--border); margin-bottom: 6px;
+            background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+            background-size: 10% 10%; }
+        .canvas-hint { position: absolute; top: 8px; left: 12px; color: #55555f; font-size: 12px; font-weight: 600; pointer-events: none; z-index: 0; }
+        .canvas-tip { text-align: right; color: #55555f; font-size: 11px; margin-bottom: 14px; }
+
+        /* PS 式对齐/间距参考线 */
+        .guide-v, .guide-h { position: absolute; background: #ff3df0; z-index: 60; pointer-events: none; box-shadow: 0 0 5px rgba(255,61,240,.9); display: none; }
+        .guide-v { top: 0; bottom: 0; width: 1px; }
+        .guide-h { left: 0; right: 0; height: 1px; }
+        .guide-dist-v, .guide-dist-h { position: absolute; border-color: #ff3df0; border-style: solid; border-width: 0; z-index: 59; pointer-events: none; opacity: .95; display: none; }
+        .guide-dist-v { border-left-width: 1px; }
+        .guide-dist-h { border-top-width: 1px; }
+        .gd-tag { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #ff3df0; background: rgba(8,8,12,.85); padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+
+        /* ===== 预览: 复刻 OBS 实际渲染样式 ===== */
+        /* 外层: 定位+交互热区(padding扩展覆盖拖影)，锚点=padding盒中心(经偏移校正后与内容中心一致) */
+        #preview-canvas .pv-group { position: absolute; z-index: 10; cursor: grab; box-sizing: border-box; }
+        #preview-canvas .pv-group:active { cursor: grabbing; }
+        #preview-canvas .pv-group:hover { z-index: 20; }
+        /* 中层: 纯视觉虚线框(absolute+负inset外扩覆盖拖影区)，同时作为拖影区的鼠标交互层(事件冒泡到外层) */
+        #preview-canvas .pv-frame { position: absolute; inset: 0; border: 2px dashed rgba(57,197,187,.55); border-radius: 10px; pointer-events: auto; transition: border-color .12s, box-shadow .12s; }
+        #preview-canvas .pv-group:hover .pv-frame { border-color: rgba(57,197,187,.95); }
+        #preview-canvas .pv-group.selected .pv-frame { border-color: #ff3df0; box-shadow: 0 0 10px rgba(255,61,240,.35); }
+        /* 悬停遮罩(与虚线框同范围) */
+        #preview-canvas .pv-shade { position: absolute; inset: 0; border-radius: 8px; background: rgba(8,8,12,0); pointer-events: none; transition: background .15s; z-index: 25; }
+        #preview-canvas .pv-group:hover .pv-shade { background: rgba(8,8,12,.22); }
+        /* 内层: 按键内容(文档流，与 OBS 排列一致) */
+        #preview-canvas .pv-content { display: flex; gap: 8px; position: relative; z-index: 2; }
+        #preview-canvas .pv-content.group-dir-right, #preview-canvas .pv-content.group-dir-left { flex-direction: column; }
+        #preview-canvas .pv-content.group-dir-up, #preview-canvas .pv-content.group-dir-down { flex-direction: row; }
+
+        /* 名称+坐标: 直接覆盖在虚线框内部顶部居中(无悬浮窗，坐标在名字下方) */
+        #preview-canvas .pv-label { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); white-space: nowrap; pointer-events: none; z-index: 30; text-align: center; opacity: .92; transition: opacity .15s; }
+        #preview-canvas .pv-group:hover .pv-label { opacity: 1; }
+        #preview-canvas .pv-name { font-size: 19px; font-weight: 800; color: var(--accent); line-height: 1.25; text-shadow: 0 1px 3px rgba(0,0,0,.95), 0 0 8px rgba(0,0,0,.8); }
+        #preview-canvas .pv-pos { font-size: 12px; color: #c9c9d4; font-family: Consolas, monospace; margin-top: 1px; text-shadow: 0 1px 2px rgba(0,0,0,.95); }
+
+        #preview-canvas .key-wrapper { display: flex; align-items: center; justify-content: center; gap: 6px; position: relative; }
+        #preview-canvas .dir-right { flex-direction: row; }
+        #preview-canvas .dir-left { flex-direction: row-reverse; }
+        #preview-canvas .dir-down { flex-direction: column; }
+        #preview-canvas .dir-up { flex-direction: column-reverse; }
+
+        #preview-canvas .stats { display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.85); border: 1px solid rgba(255,255,255,.15); border-radius: 6px; font-family: Consolas, monospace; z-index: 3; }
+        #preview-canvas .dir-right .stats, #preview-canvas .dir-left .stats { flex-direction: column; width: 26px; padding: 4px 0; }
+        #preview-canvas .dir-up .stats, #preview-canvas .dir-down .stats { flex-direction: row; height: 26px; padding: 0 6px; gap: 4px; }
+        #preview-canvas .cps-val { color: var(--color); font-weight: bold; font-size: 13px; text-shadow: 0 0 4px var(--color); }
+        #preview-canvas .count-val { color: #eee; font-size: 11px; }
+        #preview-canvas .dir-right .divider, #preview-canvas .dir-left .divider { width: 14px; height: 1px; background: rgba(255,255,255,.3); margin: 2px 0; }
+        #preview-canvas .dir-up .divider, #preview-canvas .dir-down .divider { width: 1px; height: 14px; background: rgba(255,255,255,.3); margin: 0 2px; }
+
+        #preview-canvas .key-block { width: 48px; height: 48px; position: relative; }
+        #preview-canvas .key-visual { position: absolute; inset: 0; display: flex; justify-content: center; align-items: center; background: rgba(0,0,0,.8); border: 2px solid var(--color); border-radius: 6px; z-index: 2; }
+        #preview-canvas .key-name { font-size: 20px; font-weight: bold; color: #fff; text-shadow: 0 0 2px rgba(0,0,0,.9), 0 0 6px rgba(0,0,0,.7); }
+
+        #preview-canvas .trail { position: absolute; z-index: 1; opacity: .45; }
+        #preview-canvas .dir-right .trail { left: calc(100% - 4px); top: 0; width: 250px; height: 100%; background: linear-gradient(to right, var(--color), transparent); -webkit-mask-image: linear-gradient(to right, transparent 0%, black 6%, black 80%, transparent 100%); mask-image: linear-gradient(to right, transparent 0%, black 6%, black 80%, transparent 100%); }
+        #preview-canvas .dir-left .trail { right: calc(100% - 4px); top: 0; width: 250px; height: 100%; background: linear-gradient(to left, var(--color), transparent); -webkit-mask-image: linear-gradient(to left, transparent 0%, black 6%, black 80%, transparent 100%); mask-image: linear-gradient(to left, transparent 0%, black 6%, black 80%, transparent 100%); }
+        #preview-canvas .dir-down .trail { top: calc(100% - 4px); left: 0; width: 100%; height: 250px; background: linear-gradient(to bottom, var(--color), transparent); -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 6%, black 80%, transparent 100%); mask-image: linear-gradient(to bottom, transparent 0%, black 6%, black 80%, transparent 100%); }
+        #preview-canvas .dir-up .trail { bottom: calc(100% - 4px); left: 0; width: 100%; height: 250px; background: linear-gradient(to top, var(--color), transparent); -webkit-mask-image: linear-gradient(to top, transparent 0%, black 6%, black 80%, transparent 100%); mask-image: linear-gradient(to top, transparent 0%, black 6%, black 80%, transparent 100%); }
+
+        /* ================= 按键配置页(区域内层导航) ================= */
+        .keys-layout { display: flex; gap: 16px; align-items: flex-start; }
+        .group-nav { width: 200px; flex-shrink: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 4px; position: sticky; top: 18px; }
+        .group-nav-title { font-size: 11px; color: var(--text-dim); padding: 4px 8px 8px; letter-spacing: 1px; }
+        .gnav-item { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 7px; cursor: pointer; color: var(--text-dim); font-size: 13.5px; font-weight: 600; border: 1px solid transparent; transition: .15s; }
+        .gnav-item:hover { background: #1d1d24; color: #eee; }
+        .gnav-item.active { background: rgba(57,197,187,.12); border-color: rgba(57,197,187,.35); color: var(--accent); }
+        .gnav-item .gnav-dot { width: 8px; height: 8px; border-radius: 50%; background: #555; flex-shrink: 0; }
+        .gnav-item.on .gnav-dot { background: #2ee66e; box-shadow: 0 0 5px rgba(46,230,110,.6); }
+        .gnav-item .gnav-count { margin-left: auto; font-size: 11px; opacity: .6; }
+        .gnav-add { margin-top: 6px; padding: 9px; border: 1px dashed #3a3a44; border-radius: 7px; text-align: center; color: var(--text-dim); font-size: 12.5px; cursor: pointer; transition: .15s; }
+        .gnav-add:hover { border-color: var(--accent); color: var(--accent); }
+
+        .group-panel { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; }
+        .group-panel.empty { display: flex; align-items: center; justify-content: center; min-height: 300px; color: var(--text-dim); font-size: 14px; }
+        .panel-section { margin-bottom: 18px; }
+        .panel-section:last-child { margin-bottom: 0; }
+        .panel-section > h3 { margin: 0 0 10px; font-size: 13px; color: var(--accent); letter-spacing: 1px; display: flex; align-items: center; gap: 6px; }
+        .panel-section > h3::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+        .form-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 13px; color: #b9b9c4; }
+        .form-row select, .form-row input[type="text"] { background: #1c1c22; color: #eee; border: 1px solid #3a3a44; border-radius: 5px; padding: 5px 8px; }
+        .form-row input[type="text"].group-name-input { color: var(--accent); font-weight: 700; font-size: 14px; width: 180px; }
+
+        /* 对齐控制栏 */
+        .align-tools { background: #101014; border: 1px solid #26262e; padding: 10px 12px; border-radius: 8px; font-size: 12px; color: #9a9aa5; }
+        .align-tools-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+        .align-tools-row:last-child { margin-bottom: 0; }
+        .align-tools-row .spacer { flex: 1; }
+        .align-tools button { background: #2c2c34; color: #ddd; border: 1px solid #3a3a44; border-radius: 5px; padding: 4px 10px; cursor: pointer; font-size: 11.5px; transition: .15s; }
+        .align-tools button:hover { background: #3a3a44; border-color: var(--accent); }
+        .align-tools select { background: #1c1c22; color: #eee; border: 1px solid #3a3a44; border-radius: 5px; padding: 3px 6px; max-width: 110px; font-size: 12px; }
+        .pos-input { width: 56px; background: #1c1c22; color: var(--accent); border: 1px solid #3a3a44; border-radius: 5px; padding: 3px 5px; font-size: 12px; text-align: center; font-weight: 700; }
+        .pos-input::-webkit-outer-spin-button, .pos-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+        /* 按键表格 */
+        .key-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+        .key-table th { text-align: left; color: var(--text-dim); font-weight: 600; font-size: 11px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+        .key-table td { padding: 6px 8px; border-bottom: 1px solid #22222a; vertical-align: middle; }
+        .key-table tr:last-child td { border-bottom: none; }
+        .key-table input[type="text"] { width: 46px; text-align: center; font-weight: 700; text-transform: uppercase; background: #1c1c22; color: #fff; border: 1px solid #3a3a44; border-radius: 5px; padding: 5px; }
+        .key-table input[type="color"] { width: 34px; height: 28px; padding: 0; border: none; cursor: pointer; background: transparent; }
+        .key-table select { background: #1c1c22; color: #eee; border: 1px solid #3a3a44; border-radius: 5px; padding: 4px 5px; font-size: 12px; max-width: 105px; }
+        .key-table select:disabled { opacity: .35; cursor: not-allowed; }
+
+        /* 开关组件 */
+        .switch-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px dashed #26262e; font-size: 13.5px; }
+        .switch-row:last-child { border-bottom: none; }
+        .switch-row .sw-label { display: flex; flex-direction: column; gap: 2px; }
+        .switch-row .sw-desc { font-size: 11.5px; color: var(--text-dim); }
+        .switch { position: relative; display: inline-block; vertical-align: middle; width: 42px; height: 23px; flex-shrink: 0; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .switch .slider { position: absolute; inset: 0; background: #3a3a44; border-radius: 23px; cursor: pointer; transition: .2s; }
+        .switch .slider::before { content: ''; position: absolute; width: 17px; height: 17px; left: 3px; top: 3px; background: #888; border-radius: 50%; transition: .2s; }
+        .switch input:checked + .slider { background: rgba(57,197,187,.45); }
+        .switch input:checked + .slider::before { transform: translateX(19px); background: var(--accent); }
+        .switch input:disabled + .slider { opacity: .35; cursor: not-allowed; }
+        /* 小号开关(按键表格用) */
+        .switch.sm { width: 34px; height: 19px; }
+        .switch.sm .slider::before { width: 13px; height: 13px; }
+        .switch.sm input:checked + .slider::before { transform: translateX(15px); }
+        /* 区域停用: 锁定下方设置 */
+        .sec-disabled { opacity: .38; pointer-events: none; user-select: none; filter: grayscale(.4); }
+        .sub-options { margin: 4px 0 4px 14px; padding-left: 12px; border-left: 2px solid #26262e; }
+        .sub-options .form-row { font-size: 12.5px; margin-bottom: 8px; }
+
+        /* 全局统计 */
+        .stats-summary { display: flex; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+        .stat-box { flex: 1; min-width: 110px; background: #101014; border: 1px solid #26262e; border-radius: 8px; padding: 12px; text-align: center; }
+        .stat-box .stat-num { font-size: 22px; font-weight: 800; color: var(--accent); font-family: Consolas, monospace; }
+        .stat-box .stat-label { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+        .stats-table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-family: Consolas, monospace; }
+        .stats-table th { text-align: left; color: var(--text-dim); font-size: 11px; padding: 6px 8px; border-bottom: 1px solid var(--border); font-family: 'Segoe UI', sans-serif; }
+        .stats-table td { padding: 6px 8px; border-bottom: 1px solid #22222a; }
+        .stats-table tr:last-child td { border-bottom: none; }
+        .stats-table .st-key { display: inline-block; min-width: 26px; text-align: center; background: #1c1c22; border: 1px solid #3a3a44; border-radius: 4px; padding: 2px 6px; font-weight: 700; color: var(--accent); }
+        .stats-empty { color: var(--text-dim); font-size: 12.5px; text-align: center; padding: 16px; }
+
+        .btn-action { background: #2c2c34; color: #eee; border: 1px solid #3a3a44; border-radius: 6px; padding: 6px; cursor: pointer; transition: .15s; font-size: 13px; }
+        .btn-action:hover { background: #3a3a44; border-color: var(--accent); }
+        .btn-danger { background: rgba(231,76,60,.15); color: #ff6f61; border: 1px solid rgba(231,76,60,.4); border-radius: 5px; padding: 4px 9px; cursor: pointer; transition: .15s; font-size: 12px; }
+        .btn-danger:hover { background: #e74c3c; color: #fff; }
+
+        /* 底部固定保存栏(随侧栏收起联动) */
+        .save-bar { position: fixed; left: var(--sbw); right: 0; bottom: 0; z-index: 150; background: rgba(16,16,20,.92); backdrop-filter: blur(10px); border-top: 1px solid var(--border); padding: 12px 24px; transition: left .2s; }
+        .btn-save { width: 100%; padding: 13px; background: linear-gradient(90deg, #39C5BB, #2ba39a); border: none; border-radius: 9px; color: #03211e; font-size: 16px; font-weight: 800; letter-spacing: 1px; cursor: pointer; transition: .15s; }
+        .btn-save:hover { filter: brightness(1.1); }
+    </style>
+</head>
+<body>
+    <!-- ================= 左侧导航栏 ================= -->
+    <aside id="sidebar">
+        <div class="side-logo"><span class="logo-icon">🎛️</span><span class="side-text">按键控制台</span></div>
+        <nav class="side-nav">
+            <div class="nav-item active" data-page="layout" onclick="switchPage('layout')"><span class="nav-icon">📐</span><span class="side-text">布局设计</span></div>
+            <div class="nav-item" data-page="keys" onclick="switchPage('keys')"><span class="nav-icon">⌨️</span><span class="side-text">按键配置</span></div>
+            <div class="nav-item" data-page="settings" onclick="switchPage('settings')"><span class="nav-icon">⚙️</span><span class="side-text">全局设置</span></div>
+        </nav>
+        <div class="side-collapse" onclick="toggleSidebar()"><span id="collapse-icon">◀</span><span class="side-text">收起导航</span></div>
+    </aside>
+
+    <!-- ================= 主内容区 ================= -->
+    <main class="main">
+        <header class="main-header">
+            <div class="page-title" id="page-title">📐 布局设计</div>
+            <div class="header-right">
+                <span id="status" class="status-pill off">🔴 未连接</span>
+                <button class="btn btn-add" onclick="addNewGroup()">➕ 新增区域</button>
+                <button class="btn btn-reset" onclick="sendCmd('reset_stats')">🔄 重置统计</button>
+                <button class="btn btn-refresh" onclick="sendCmd('refresh')">⚡ 强制刷新</button>
+            </div>
+        </header>
+
+        <!-- 布局设计页(大画布) -->
+        <section class="page active" id="page-layout">
+            <div class="layout-wrap">
+                <div class="layout-toolbar">
+                    <div class="scale-control">
+                        <label>全局缩放</label>
+                        <input type="range" id="global_scale" min="0.5" max="2.5" step="0.1" value="1.0">
+                        <span class="scale-badge">1.0x</span>
+                    </div>
+                    <div class="mirror-tools">
+                        <span>已选区域: <b id="sel-name">未选择(点击预览区域)</b></span>
+                        <button class="btn" id="btn-undo" onclick="undoLayout()" title="撤回上一步布局改动(Ctrl+Z)" style="background:#5a4a8a;padding:5px 12px;font-size:12px;">↩ 撤回 <span id="undo-count"></span></button>
+                    </div>
+                </div>
+                <div class="canvas-container" id="preview-canvas">
+                    <div class="canvas-hint">16:9 OBS 画面预览 · 点击选择区域 / 拖动定位(自动吸附)</div>
+                    <div class="guide-v" id="guide-v"></div>
+                    <div class="guide-h" id="guide-h"></div>
+                    <div class="guide-dist-v" id="gd-v1"><span class="gd-tag"></span></div>
+                    <div class="guide-dist-v" id="gd-v2"><span class="gd-tag"></span></div>
+                    <div class="guide-dist-h" id="gd-h1"><span class="gd-tag"></span></div>
+                    <div class="guide-dist-h" id="gd-h2"><span class="gd-tag"></span></div>
+                </div>
+                <div class="canvas-tip">💡 拖动时靠近画布中心、其他区域边缘或其对称位置(两侧边距相等)会自动吸附，粉色参考线实时显示</div>
+            </div>
+        </section>
+
+        <!-- 按键配置页(区域内层导航 + 配置面板) -->
+        <section class="page" id="page-keys">
+            <div class="keys-layout">
+                <div class="group-nav" id="group-nav"></div>
+                <div class="group-panel" id="group-panel"></div>
+            </div>
+        </section>
+
+        <!-- 全局设置页 -->
+        <section class="page" id="page-settings">
+            <div class="settings-grid">
+                <div class="settings-card">
+                    <h3>🎚️ 全局缩放</h3>
+                    <p class="settings-desc">等比缩放 OBS 画面中的所有按键区域，与布局页的滑块实时联动。</p>
+                    <div class="scale-control">
+                        <input type="range" id="global_scale2" min="0.5" max="2.5" step="0.1" value="1.0" style="flex:1; max-width:280px;">
+                        <span class="scale-badge">1.0x</span>
+                    </div>
+                </div>
+                <div class="settings-card">
+                    <h3>� 自动隐藏</h3>
+                    <p class="settings-desc">按键 30 秒无输入后按所设动画自动隐藏，再次触发时自动显示。隐藏/显示动画可在「按键配置」中精确到每个按键。</p>
+                    <div class="switch-row">
+                        <div class="sw-label"><span>启用自动隐藏</span><span class="sw-desc">关闭时会同时关闭补位与单独计数</span></div>
+                        <label class="switch"><input type="checkbox" id="ah_enabled" onchange="onAutoHideToggle()"><span class="slider"></span></label>
+                    </div>
+                    <div class="sub-options" id="ah_subs">
+                        <div class="switch-row">
+                            <div class="sw-label"><span>自动按键补位</span><span class="sw-desc">隐藏后剩余按键自动贴近</span></div>
+                            <label class="switch"><input type="checkbox" id="ah_compact" onchange="onAutoHideToggle()"><span class="slider"></span></label>
+                        </div>
+                        <div class="form-row" style="margin-top:8px;">
+                            <label>补位方向</label>
+                            <select id="ah_compact_dir" onchange="onAutoHideToggle()" style="background:#1c1c22;color:#eee;border:1px solid #3a3a44;border-radius:5px;padding:4px 6px;">
+                                <option value="start">向起点靠拢</option>
+                                <option value="center">向中心靠拢</option>
+                                <option value="end">向终点靠拢</option>
+                            </select>
+                        </div>
+                        <div class="switch-row">
+                            <div class="sw-label"><span>单独计数</span><span class="sw-desc">仅统计本次显示期间的按键次数</span></div>
+                            <label class="switch"><input type="checkbox" id="ah_session" onchange="onAutoHideToggle()"><span class="slider"></span></label>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-card">
+                    <h3>📊 全局按键统计 <span style="font-size:10px;color:#55555f;font-weight:400;">(每5秒自动刷新 · 持久化保存)</span></h3>
+                    <div class="stats-summary">
+                        <div class="stat-box"><div class="stat-num" id="stat-total">0</div><div class="stat-label">总按键计数</div></div>
+                        <div class="stat-box"><div class="stat-num" id="stat-keys">0</div><div class="stat-label">已记录按键</div></div>
+                        <div class="stat-box"><div class="stat-num" id="stat-peak">0</div><div class="stat-label">最高峰值CPS</div></div>
+                    </div>
+                    <div id="stats-table-wrap"><div class="stats-empty">暂无统计数据，按下已添加的按键后开始记录</div></div>
+                </div>
+                <div class="settings-card">
+                    <h3>📖 使用说明</h3>
+                    <ul>
+                        <li><b>布局设计</b>：点击选择区域(粉色虚线框)，拖拽摆放自动吸附对齐</li>
+                        <li><b>按键配置</b>：左侧选择区域，右侧编辑键位/颜色/动画</li>
+                        <li><b>自动隐藏</b>：30 秒无输入的按键自动隐藏，触发后自动显示</li>
+                        <li>所有修改需点击底部 <b>保存</b> 后才会同步到 OBS</li>
+                        <li><b>重置统计</b>：清空按键 CPS/累计计数与全局统计</li>
+                        <li><b>强制刷新</b>：重载 OBS 画面，计数不丢失</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 底部固定保存栏 -->
+    <div class="save-bar">
+        <button class="btn-save" onclick="saveConfig()">💾 保存并实时同步到 OBS</button>
+    </div>
+
+    <script>
+        let ws;
+        let configData = null;
+        const dirOptions = { right: "拖影向右 →", left: "拖影向左 ←", down: "拖影向下 ↓", up: "拖影向上 ↑" };
+        const REF_W = 1920;    // OBS 参考分辨率宽度(预览按比例缩放)
+        const REF_H = 1080;    // OBS 参考分辨率高度
+        const SNAP_PX = 8;     // 吸附阈值(屏幕像素)
+        let groupSizes = {};   // gId -> { wPct, hPct } 区域在画布中的视觉尺寸(百分比)
+        let selectedGroupId = null; // 布局页当前选中的区域
+
+        // ================= 布局多步撤回(localStorage 持久化) =================
+        const UNDO_KEY = 'PD_LAYOUT_UNDO';
+        const UNDO_MAX = 50;
+        let undoStack = [];
+        try { undoStack = JSON.parse(localStorage.getItem(UNDO_KEY)) || []; } catch (e) { undoStack = []; }
+        function groupsSnapshot() { return JSON.parse(JSON.stringify(configData.groups)); }
+        function pushUndo() {
+            if (!configData) return;
+            undoStack.push(groupsSnapshot());
+            if (undoStack.length > UNDO_MAX) undoStack.shift();
+            try { localStorage.setItem(UNDO_KEY, JSON.stringify(undoStack)); } catch (e) {}
+            updateUndoUI();
+        }
+        function undoLayout() {
+            if (!undoStack.length || !configData) return;
+            configData.groups = undoStack.pop();
+            try { localStorage.setItem(UNDO_KEY, JSON.stringify(undoStack)); } catch (e) {}
+            if (selectedGroupId && !configData.groups[selectedGroupId]) selectedGroupId = null;
+            if (activeGroupId && !configData.groups[activeGroupId]) activeGroupId = null;
+            renderUI(true);
+            updateUndoUI();
+        }
+        function updateUndoUI() {
+            const el = document.getElementById('undo-count');
+            if (el) el.innerText = undoStack.length ? `(${undoStack.length})` : '';
+        }
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+                const t = e.target;
+                if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+                e.preventDefault();
+                undoLayout();
+            }
+        });
+
+        // ================= 页面导航 =================
+        const pageTitles = { layout: '📐 布局设计', keys: '⌨️ 按键配置', settings: '⚙️ 全局设置' };
+        function switchPage(page) {
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page));
+            document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + page));
+            document.getElementById('page-title').innerText = pageTitles[page];
+            if (page === 'layout') renderPreview(); // 画布从隐藏变为可见，需重绘以获取正确尺寸
+        }
+        function toggleSidebar() {
+            document.body.classList.toggle('sb-collapsed');
+            // 等待侧栏动画结束后按新画布宽度重绘
+            setTimeout(() => { if (document.getElementById('page-layout').classList.contains('active')) renderPreview(); }, 230);
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        function connect() {
+            const statusEl = document.getElementById('status');
+            ws = new WebSocket('ws://localhost:8765');
+            ws.onopen = () => { statusEl.className = 'status-pill on'; statusEl.innerText = '🟢 已连接'; };
+            ws.onclose = () => { statusEl.className = 'status-pill off'; statusEl.innerText = '🔴 断开重连中'; setTimeout(connect, 1000); };
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'config') {
+                    configData = data.data;
+                    getAutoHide(); // 确保 autoHide 结构存在
+                    ['global_scale', 'global_scale2'].forEach(id => { const el = document.getElementById(id); if (el) el.value = configData.scale; });
+                    document.querySelectorAll('.scale-badge').forEach(b => b.innerText = configData.scale + 'x');
+                    syncAutoHideUI();
+                    renderUI(true);
+                }
+                else if (data.type === 'stats') {
+                    statsData = data.data;
+                    renderStats();
+                }
+            };
+        }
+
+        function sendCmd(cmd) { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: cmd })); }
+
+        // 预览缩放比 = 画布宽度 / 参考分辨率 × 全局缩放
+        function getPreviewScale() {
+            return (document.getElementById('preview-canvas').clientWidth / REF_W) * parseFloat(document.getElementById('global_scale').value);
+        }
+
+        // 生成与其他区域对齐的下拉列表
+        function getAlignTargetOptions(excludeId) {
+            let html = '';
+            Object.keys(configData.groups).forEach(id => {
+                if (id !== excludeId && configData.groups[id].enabled) {
+                    html += `<option value="${id}">${configData.groups[id].name}</option>`;
+                }
+            });
+            return html || '<option value="">无其他区域</option>';
+        }
+
+        function renderUI(rebuildCards = true) {
+            renderPreview();
+            if (rebuildCards) { renderGroupNav(); renderGroupPanel(); }
+        }
+
+        // ================= 自动隐藏配置 =================
+        const hideAnimOptions = { fade: '淡出', up: '向上滑出', down: '向下滑出', left: '向左滑出', right: '向右滑出' };
+        const showAnimOptions = { fade: '淡入', up: '从上滑入', down: '从下滑入', left: '从左滑入', right: '从右滑入' };
+        function getAutoHide() {
+            if (!configData.autoHide) configData.autoHide = { enabled: false, compact: false, compactDir: 'center', sessionCount: false };
+            return configData.autoHide;
+        }
+        function syncAutoHideUI() {
+            const ah = getAutoHide();
+            document.getElementById('ah_enabled').checked = ah.enabled;
+            document.getElementById('ah_compact').checked = ah.compact;
+            document.getElementById('ah_compact_dir').value = ah.compactDir || 'center';
+            document.getElementById('ah_session').checked = ah.sessionCount;
+            // 子开关仅在总开关开启时可用
+            document.getElementById('ah_compact').disabled = !ah.enabled;
+            document.getElementById('ah_compact_dir').disabled = !ah.enabled;
+            document.getElementById('ah_session').disabled = !ah.enabled;
+            document.getElementById('ah_subs').style.opacity = ah.enabled ? '1' : '.45';
+        }
+        function onAutoHideToggle() {
+            if (!configData) return;
+            const ah = getAutoHide();
+            ah.enabled = document.getElementById('ah_enabled').checked;
+            if (!ah.enabled) {
+                // 关闭自动隐藏时同时关闭补位与单独计数，避免bug
+                ah.compact = false;
+                ah.sessionCount = false;
+            } else {
+                ah.compact = document.getElementById('ah_compact').checked;
+                ah.sessionCount = document.getElementById('ah_session').checked;
+            }
+            ah.compactDir = document.getElementById('ah_compact_dir').value;
+            syncAutoHideUI();
+            renderGroupPanel(); // 刷新按键动画下拉可用状态
+        }
+
+        // ================= 全局统计 =================
+        let statsData = null;
+        function renderStats() {
+            if (!statsData) return;
+            const keys = Object.keys(statsData.keys || {});
+            document.getElementById('stat-total').innerText = statsData.total || 0;
+            document.getElementById('stat-keys').innerText = keys.length;
+            let peak = 0;
+            keys.forEach(k => { peak = Math.max(peak, statsData.keys[k].peak || 0); });
+            document.getElementById('stat-peak').innerText = peak;
+            const wrap = document.getElementById('stats-table-wrap');
+            if (!keys.length) {
+                wrap.innerHTML = '<div class="stats-empty">暂无统计数据，按下已添加的按键后开始记录</div>';
+                return;
+            }
+            keys.sort((a, b) => (statsData.keys[b].count || 0) - (statsData.keys[a].count || 0));
+            let rows = '';
+            keys.forEach(k => {
+                const e = statsData.keys[k];
+                rows += `<tr><td><span class="st-key">${escapeHtml(k)}</span></td><td>${e.count}</td><td>${e.peak}</td><td>${e.avg}</td></tr>`;
+            });
+            wrap.innerHTML = `<table class="stats-table"><thead><tr><th>按键</th><th>累计计数</th><th>峰值 CPS</th><th>平均 CPS</th></tr></thead><tbody>${rows}</tbody></table>`;
+        }
+
+        // ===== 布局页预览: 与 OBS 一致的实际样式(仅画布可见时渲染) =====
+        function renderPreview() {
+            const canvas = document.getElementById('preview-canvas');
+            // 只清除区域预览，保留网格背景/参考线/提示
+            canvas.querySelectorAll('.pv-group').forEach(el => el.remove());
+            groupSizes = {};
+            if (!configData) return;
+            if (!canvas.clientWidth) { updateLayoutToolbar(); return; } // 布局页未显示时跳过
+
+            const scale = getPreviewScale();
+            const canvasW = canvas.clientWidth;
+            const canvasH = canvas.clientHeight || 1;
+            // 虚线边框与边距按预览缩放反向补偿，保持屏幕上视觉恒定
+            const borderW = Math.max(1, 1.6 / scale);
+            const fPad = 6 / scale;
+            // 各方向拖影扩展(1920 参考系像素)
+            const TRAIL_EXT = { right: { r: 250 }, left: { l: 250 }, down: { b: 250 }, up: { t: 250 } };
+
+            Object.keys(configData.groups).forEach(gId => {
+                const group = configData.groups[gId];
+                if (!group.enabled) return;
+
+                const ext = TRAIL_EXT[group.direction] || {};
+                const eL = ext.l || 0, eR = ext.r || 0, eT = ext.t || 0, eB = ext.b || 0;
+                // 虚线框/交互热区相对内容盒的外扩量(负值 = 向外延伸覆盖拖影)
+                const fT = -(eT + fPad), fR = -(eR + fPad), fB = -(eB + fPad), fL = -(eL + fPad);
+
+                // 外层: 尺寸=按键内容，锚点=内容中心(与 OBS 的 group-container 完全一致，无需任何校正)
+                const gEl = document.createElement('div');
+                gEl.className = `pv-group group-dir-${group.direction}` + (gId === selectedGroupId ? ' selected' : '');
+                gEl.style.left = `${group.x}%`;
+                gEl.style.top = `${group.y}%`;
+                gEl.style.transform = `translate(-50%, -50%) scale(${scale})`;
+
+                // 虚线框: 负 inset 外扩覆盖拖影延伸区；pointer-events:auto 使拖影区也可点选/拖动
+                const frame = document.createElement('div');
+                frame.className = 'pv-frame';
+                frame.style.inset = `${fT}px ${fR}px ${fB}px ${fL}px`;
+                frame.style.borderWidth = borderW + 'px';
+                gEl.appendChild(frame);
+
+                // 悬停遮罩(与虚线框同范围，不拦截鼠标)
+                const shade = document.createElement('div');
+                shade.className = 'pv-shade';
+                shade.style.inset = frame.style.inset;
+                gEl.appendChild(shade);
+
+                // 内层: 按键内容(文档流撑开，与 OBS 一致)
+                const content = document.createElement('div');
+                content.className = `pv-content group-dir-${group.direction}`;
+                group.keys.forEach(k => {
+                    const wrap = document.createElement('div');
+                    wrap.className = `key-wrapper dir-${group.direction}`;
+                    wrap.style.setProperty('--color', k.color);
+                    wrap.innerHTML = `
+                        <div class="stats">
+                            <span class="cps-val">0</span>
+                            <div class="divider"></div>
+                            <span class="count-val">0</span>
+                        </div>
+                        <div class="key-block">
+                            <div class="trail"></div>
+                            <div class="key-visual"><div class="key-name">${escapeHtml(k.key)}</div></div>
+                        </div>`;
+                    content.appendChild(wrap);
+                });
+                gEl.appendChild(content);
+
+                // 区域名称+坐标: 虚线框内部顶部，水平居中于内容盒(CSS left:50% + translateX(-50%))
+                const label = document.createElement('div');
+                label.className = 'pv-label';
+                label.style.top = `${fT + 4 / scale}px`;
+                label.innerHTML = `<div class="pv-name">${escapeHtml(group.name)}</div><div class="pv-pos" id="label-pos-${gId}">${group.x}%, ${group.y}%</div>`;
+                gEl.appendChild(label);
+
+                makeDraggable(gEl, gId);
+                canvas.appendChild(gEl);
+
+                // 记录区域内容(按键+数据舱)的视觉尺寸(占画布百分比)，供吸附参考线使用
+                groupSizes[gId] = {
+                    wPct: (content.offsetWidth * scale / canvasW) * 100,
+                    hPct: (content.offsetHeight * scale / canvasH) * 100
+                };
+            });
+            updateLayoutToolbar();
+        }
+
+        // ===== 按键配置页: 区域内层导航 =====
+        let activeGroupId = null; // 按键配置页当前展开的区域
+
+        function renderGroupNav() {
+            const nav = document.getElementById('group-nav');
+            const ids = Object.keys(configData.groups);
+            if (!activeGroupId || !configData.groups[activeGroupId]) activeGroupId = ids[0] || null;
+
+            let html = '<div class="group-nav-title">按键区域</div>';
+            ids.forEach(gId => {
+                const g = configData.groups[gId];
+                html += `
+                    <div class="gnav-item ${gId === activeGroupId ? 'active' : ''} ${g.enabled ? 'on' : ''}" onclick="selectGroup('${gId}')">
+                        <span class="gnav-dot"></span>
+                        <span>${escapeHtml(g.name)}</span>
+                        <span class="gnav-count">${g.keys.length}键</span>
+                    </div>
+                `;
+            });
+            html += '<div class="gnav-add" onclick="addNewGroup()">＋ 新增区域</div>';
+            nav.innerHTML = html;
+        }
+        function selectGroup(gId) {
+            activeGroupId = gId;
+            renderGroupNav();
+            renderGroupPanel();
+        }
+
+        // ===== 按键配置页: 单区域配置面板 =====
+        function renderGroupPanel() {
+            const panel = document.getElementById('group-panel');
+            const gId = activeGroupId;
+            if (!gId || !configData.groups[gId]) {
+                panel.className = 'group-panel empty';
+                panel.innerHTML = '暂无按键区域，点击左侧「＋ 新增区域」创建';
+                return;
+            }
+            panel.className = 'group-panel';
+            const group = configData.groups[gId];
+            const ahEnabled = getAutoHide().enabled;
+
+            let dirOptionsHtml = '';
+            Object.keys(dirOptions).forEach(d => {
+                dirOptionsHtml += `<option value="${d}" ${group.direction === d ? 'selected' : ''}>${dirOptions[d]}</option>`;
+            });
+
+            let keyRows = '';
+            group.keys.forEach((k, i) => {
+                let hideOpts = '', showOpts = '';
+                Object.keys(hideAnimOptions).forEach(a => {
+                    hideOpts += `<option value="${a}" ${(k.hideAnim || 'fade') === a ? 'selected' : ''}>${hideAnimOptions[a]}</option>`;
+                    showOpts += `<option value="${a}" ${(k.showAnim || 'fade') === a ? 'selected' : ''}>${showAnimOptions[a]}</option>`;
+                });
+                keyRows += `
+                    <tr>
+                        <td><input type="text" value="${escapeHtml(k.key)}" onchange="updateKey('${gId}', ${i}, 'key', this.value)" maxlength="1"></td>
+                        <td><input type="color" value="${k.color}" onchange="updateKey('${gId}', ${i}, 'color', this.value)"></td>
+                        <td><label class="switch sm" title="该按键是否参与自动显隐"><input type="checkbox" ${(k.autoHide !== false) ? 'checked' : ''} ${ahEnabled ? '' : 'disabled'} onchange="updateKey('${gId}', ${i}, 'autoHide', this.checked)"><span class="slider"></span></label></td>
+                        <td><select ${ahEnabled ? '' : 'disabled'} onchange="updateKey('${gId}', ${i}, 'hideAnim', this.value)">${hideOpts}</select></td>
+                        <td><select ${ahEnabled ? '' : 'disabled'} onchange="updateKey('${gId}', ${i}, 'showAnim', this.value)">${showOpts}</select></td>
+                        <td><button class="btn-danger" onclick="removeKey('${gId}', ${i})">✕</button></td>
+                    </tr>
+                `;
+            });
+
+            panel.innerHTML = `
+                <div class="panel-section">
+                    <h3>⚙️ 基本设置</h3>
+                    <div class="form-row">
+                        <label>区域名称</label>
+                        <input type="text" class="group-name-input" value="${escapeHtml(group.name)}" onchange="updateGroup('${gId}', 'name', this.value)">
+                    </div>
+                    <div class="form-row">
+                        <label>拖影方向</label>
+                        <select onchange="updateGroup('${gId}', 'direction', this.value)">${dirOptionsHtml}</select>
+                    </div>
+                    <div class="form-row" style="margin-bottom:0;">
+                        <label>启用该区域</label>
+                        <span>
+                            <label class="switch"><input type="checkbox" ${group.enabled ? 'checked' : ''} onchange="toggleGroup('${gId}', this.checked)"><span class="slider"></span></label>
+                            <button class="btn-danger" style="margin-left:14px;" onclick="deleteGroup('${gId}')">删除该区域</button>
+                        </span>
+                    </div>
+                    ${group.enabled ? '' : '<div style="font-size:11.5px;color:#c9a227;margin-top:8px;">⚠ 该区域已停用，下方设置已锁定</div>'}
+                </div>
+
+                <div class="panel-section ${group.enabled ? '' : 'sec-disabled'}">
+                    <h3>📍 位置与对齐</h3>
+                    <div class="align-tools">
+                        <div class="align-tools-row">
+                            <span>坐标</span>
+                            <span>
+                                X <input class="pos-input" type="number" id="pos-x-${gId}" value="${group.x}" min="0" max="100" step="0.5" onchange="setGroupPos('${gId}', 'x', this.value)"> %
+                                Y <input class="pos-input" type="number" id="pos-y-${gId}" value="${group.y}" min="0" max="100" step="0.5" onchange="setGroupPos('${gId}', 'y', this.value)"> %
+                            </span>
+                            <span class="spacer"></span>
+                            <button onclick="alignGroup('${gId}', 'x', 50)">水平居中</button>
+                            <button onclick="alignGroup('${gId}', 'y', 50)">垂直居中</button>
+                        </div>
+                        <div class="align-tools-row">
+                            <span>目标对齐</span>
+                            <select id="align-target-${gId}">${getAlignTargetOptions(gId)}</select>
+                            <button onclick="alignToTarget('${gId}', 'x')">对齐X</button>
+                            <button onclick="alignToTarget('${gId}', 'y')">对齐Y</button>
+                            <span class="spacer"></span>
+                            <span style="color:#55555f;">提示: 布局页中拖拽可自动吸附</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-section ${group.enabled ? '' : 'sec-disabled'}">
+                    <h3>⌨️ 按键列表${ahEnabled ? '' : ' <span style="font-size:11px;color:#55555f;font-weight:400;">(显隐/动画列需开启「自动隐藏」)</span>'}</h3>
+                    <table class="key-table">
+                        <thead><tr><th>键位</th><th>颜色</th><th>显隐</th><th>隐藏动画</th><th>显示动画</th><th></th></tr></thead>
+                        <tbody>${keyRows}</tbody>
+                    </table>
+                    <button class="btn-action" style="width: 100%; margin-top: 10px;" onclick="addKey('${gId}')">＋ 新增按键</button>
+                </div>
+            `;
+        }
+
+        // ================= 数据操作逻辑 =================
+        function addNewGroup() {
+            pushUndo();
+            const newId = 'group_' + Date.now();
+            const count = Object.keys(configData.groups).length + 1;
+            configData.groups[newId] = {
+                name: `区域${count}`, enabled: true, x: 50, y: 50, direction: "right",
+                keys: [{ "key": "X", "color": "#39C5BB" }]
+            };
+            renderUI(true);
+            switchPage('keys'); // 新增后跳到配置页
+        }
+        function deleteGroup(gId) {
+            if (confirm("确定要删除这个区域吗？")) {
+                pushUndo();
+                delete configData.groups[gId];
+                if (selectedGroupId === gId) selectedGroupId = null;
+                if (activeGroupId === gId) activeGroupId = null;
+                renderUI(true);
+            }
+        }
+        function toggleGroup(gId, val) { pushUndo(); configData.groups[gId].enabled = val; renderUI(true); }
+        function updateGroup(gId, key, val) {
+            configData.groups[gId][key] = val;
+            renderPreview();
+            renderGroupNav(); // 名称变化时刷新导航，但不重建面板(避免输入失焦)
+        }
+        function updateKey(gId, idx, key, val) {
+            configData.groups[gId].keys[idx][key] = (key === 'key') ? val.toUpperCase() : val;
+            renderPreview();
+        }
+        function removeKey(gId, idx) { pushUndo(); configData.groups[gId].keys.splice(idx, 1); renderUI(true); }
+        function addKey(gId) { pushUndo(); configData.groups[gId].keys.push({ key: "X", color: "#ffffff" }); renderUI(true); }
+
+        // ================= 对齐逻辑 =================
+        function setGroupPos(gId, axis, val) {
+            let v = Math.round(parseFloat(val) * 10) / 10;
+            if (isNaN(v)) return;
+            pushUndo();
+            configData.groups[gId][axis] = Math.max(0, Math.min(100, v));
+            renderUI(true);
+        }
+        function alignGroup(gId, axis, val) {
+            pushUndo();
+            configData.groups[gId][axis] = val;
+            renderUI(true);
+        }
+        function alignToTarget(gId, axis) {
+            const targetId = document.getElementById(`align-target-${gId}`).value;
+            if (!targetId || !configData.groups[targetId]) return alert("请选择有效的对齐目标");
+            pushUndo();
+            configData.groups[gId][axis] = configData.groups[targetId][axis];
+            renderUI(true);
+        }
+
+        // 布局页工具条(显示当前选中区域)
+        function updateLayoutToolbar() {
+            const nameEl = document.getElementById('sel-name');
+            if (!nameEl || !configData) return;
+            if (!(selectedGroupId && configData.groups[selectedGroupId] && configData.groups[selectedGroupId].enabled)) {
+                selectedGroupId = null;
+            }
+            nameEl.innerText = selectedGroupId ? configData.groups[selectedGroupId].name : '未选择(点击预览区域)';
+        }
+
+        // ================= PS 式拖拽吸附(对齐 + 等边距) =================
+        function hideGuides() {
+            ['guide-v', 'guide-h', 'gd-v1', 'gd-v2', 'gd-h1', 'gd-h2'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+        }
+        // 设置一条间距参考线(占用空闲槽位)，返回是否展示成功
+        function showDistLine(axis, a, b, fixedA, fixedB, slots) {
+            const slot = slots.shift();
+            if (!slot || (b - a) < 0.3) return;
+            const el = document.getElementById(slot);
+            if (axis === 'v') {
+                el.style.left = ((a + b) / 2) + '%';
+                el.style.top = fixedA + '%';
+                el.style.height = (fixedB - fixedA) + '%';
+            } else {
+                el.style.top = ((a + b) / 2) + '%';
+                el.style.left = fixedA + '%';
+                el.style.width = (fixedB - fixedA) + '%';
+            }
+            el.querySelector('.gd-tag').innerText = Math.round((b - a) * 19.2) + 'px';
+            el.style.display = 'block';
+        }
+
+        function makeDraggable(elmnt, gId) {
+            elmnt.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                // 选中当前区域(虚线框粉色高亮)
+                selectedGroupId = gId;
+                document.querySelectorAll('#preview-canvas .pv-group.selected').forEach(el => el.classList.remove('selected'));
+                elmnt.classList.add('selected');
+                updateLayoutToolbar();
+
+                const size = groupSizes[gId];
+                if (!size) return;
+                const canvas = document.getElementById('preview-canvas');
+                const rect = canvas.getBoundingClientRect();
+                const gv = document.getElementById('guide-v');
+                const gh = document.getElementById('guide-h');
+
+                // 收集吸附参考线: 画布边缘/中心 + 其他区域的 中心/左右/上下 边缘
+                const vLines = [0, 50, 100], hLines = [0, 50, 100];
+                // 其他区域几何信息(用于边距吸附)
+                const others = [];
+                Object.keys(groupSizes).forEach(otherId => {
+                    if (otherId === gId) return;
+                    const og = configData.groups[otherId];
+                    if (!og || !og.enabled) return;
+                    const os = groupSizes[otherId];
+                    vLines.push(og.x, og.x - os.wPct / 2, og.x + os.wPct / 2);
+                    hLines.push(og.y, og.y - os.hPct / 2, og.y + os.hPct / 2);
+                    others.push({ l: og.x - os.wPct / 2, r: og.x + os.wPct / 2, t: og.y - os.hPct / 2, b: og.y + os.hPct / 2 });
+                });
+
+                const tX = (SNAP_PX / rect.width) * 100;
+                const tY = (SNAP_PX / rect.height) * 100;
+                // 记录拖动前状态(用于撤回)与是否发生位移
+                const beforeDrag = groupsSnapshot();
+                let moved = false;
+                // 相对拖拽: 按下点与初始位置的偏移，避免锚点不一致导致的瞬移
+                const g0 = configData.groups[gId];
+                const startX = g0.x, startY = g0.y;
+                const startMouseX = ((e.clientX - rect.left) / rect.width) * 100;
+                const startMouseY = ((e.clientY - rect.top) / rect.height) * 100;
+
+                const onMove = (e2) => {
+                    moved = true;
+                    const mx = ((e2.clientX - rect.left) / rect.width) * 100;
+                    const my = ((e2.clientY - rect.top) / rect.height) * 100;
+                    let x = startX + (mx - startMouseX);
+                    let y = startY + (my - startMouseY);
+                    x = Math.max(0, Math.min(100, x));
+                    y = Math.max(0, Math.min(100, y));
+
+                    // ---- 常规对齐吸附: 中心/边缘 对齐 参考线 ----
+                    let bestV = null;
+                    [0, -size.wPct / 2, size.wPct / 2].forEach(off => {
+                        vLines.forEach(L => {
+                            const d = L - (x + off);
+                            if (Math.abs(d) <= tX && (!bestV || Math.abs(d) < Math.abs(bestV.d))) bestV = { d, L };
+                        });
+                    });
+                    let bestH = null;
+                    [0, -size.hPct / 2, size.hPct / 2].forEach(off => {
+                        hLines.forEach(L => {
+                            const d = L - (y + off);
+                            if (Math.abs(d) <= tY && (!bestH || Math.abs(d) < Math.abs(bestH.d))) bestH = { d, L };
+                        });
+                    });
+
+                    // ---- 边距吸附(PS 式等间距): 本区域侧边距 = 其他区域侧边距 ----
+                    const vSlots = ['gd-v1', 'gd-v2'], hSlots = ['gd-h1', 'gd-h2'];
+                    let marginV = null;
+                    others.forEach(o => {
+                        const cands = [
+                            { dx: (x - size.wPct / 2) - o.l, from: 0, to: o.l },              // 左边距 = 目标左边距
+                            { dx: (x - size.wPct / 2) - (100 - o.r), from: o.r, to: 100 },    // 左边距 = 目标右边距(镜像)
+                            { dx: (100 - (x + size.wPct / 2)) - (100 - o.r), from: o.r, to: 100 }, // 右边距 = 目标右边距
+                            { dx: (100 - (x + size.wPct / 2)) - o.l, from: 0, to: o.l }            // 右边距 = 目标左边距(镜像)
+                        ];
+                        cands.forEach(c => {
+                            if (Math.abs(c.dx) <= tX && (!marginV || Math.abs(c.dx) < Math.abs(marginV.dx))) marginV = c;
+                        });
+                    });
+                    if (marginV && (!bestV || Math.abs(marginV.dx) < Math.abs(bestV.d))) {
+                        x -= marginV.dx;
+                        bestV = null; // 边距吸附优先
+                        const mL = x - size.wPct / 2, mR = 100 - (x + size.wPct / 2);
+                        const ySpan = [Math.max(0, y - size.hPct / 2 - 5), Math.min(100, y + size.hPct / 2 + 5)];
+                        showDistLine('v', 0, mL, ySpan[0], ySpan[1], vSlots);
+                        showDistLine('v', 100 - mR, 100, ySpan[0], ySpan[1], vSlots);
+                    }
+
+                    let marginH = null;
+                    others.forEach(o => {
+                        const cands = [
+                            { dy: (y - size.hPct / 2) - o.t, from: 0, to: o.t },
+                            { dy: (y - size.hPct / 2) - (100 - o.b), from: o.b, to: 100 },
+                            { dy: (100 - (y + size.hPct / 2)) - (100 - o.b), from: o.b, to: 100 },
+                            { dy: (100 - (y + size.hPct / 2)) - o.t, from: 0, to: o.t }
+                        ];
+                        cands.forEach(c => {
+                            if (Math.abs(c.dy) <= tY && (!marginH || Math.abs(c.dy) < Math.abs(marginH.dy))) marginH = c;
+                        });
+                    });
+                    if (marginH && (!bestH || Math.abs(marginH.dy) < Math.abs(bestH.d))) {
+                        y -= marginH.dy;
+                        bestH = null;
+                        const mT = y - size.hPct / 2, mB = 100 - (y + size.hPct / 2);
+                        const xSpan = [Math.max(0, x - size.wPct / 2 - 4), Math.min(100, x + size.wPct / 2 + 4)];
+                        showDistLine('h', 0, mT, xSpan[0], xSpan[1], hSlots);
+                        showDistLine('h', 100 - mB, 100, xSpan[0], xSpan[1], hSlots);
+                    }
+
+                    if (bestV) { x += bestV.d; gv.style.left = bestV.L + '%'; gv.style.display = 'block'; } else { gv.style.display = 'none'; }
+                    if (bestH) { y += bestH.d; gh.style.top = bestH.L + '%'; gh.style.display = 'block'; } else { gh.style.display = 'none'; }
+
+                    x = Math.round(x * 10) / 10;
+                    y = Math.round(y * 10) / 10;
+                    elmnt.style.left = x + '%';
+                    elmnt.style.top = y + '%';
+                    configData.groups[gId].x = x;
+                    configData.groups[gId].y = y;
+
+                    // 实时同步标签与卡片坐标
+                    const lp = document.getElementById(`label-pos-${gId}`);
+                    if (lp) lp.innerText = `${x}%, ${y}%`;
+                    const px = document.getElementById(`pos-x-${gId}`);
+                    if (px) px.value = x;
+                    const py = document.getElementById(`pos-y-${gId}`);
+                    if (py) py.value = y;
+                };
+                const onUp = () => {
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                    hideGuides();
+                    // 拖动结束: 若位置发生变化，将拖动前状态压入撤回栈
+                    if (moved) {
+                        undoStack.push(beforeDrag);
+                        if (undoStack.length > UNDO_MAX) undoStack.shift();
+                        try { localStorage.setItem(UNDO_KEY, JSON.stringify(undoStack)); } catch (err) {}
+                        updateUndoUI();
+                    }
+                };
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+        }
+
+        function saveConfig() {
+            if (!ws || ws.readyState !== 1) return alert("未连接服务端！");
+            configData.scale = parseFloat(document.getElementById('global_scale').value);
+            ws.send(JSON.stringify({ type: "update_config", data: configData }));
+            const btn = document.querySelector('.btn-save');
+            btn.innerText = "✅ 已同步到 OBS！";
+            setTimeout(() => { btn.innerText = "💾 保存并实时同步到 OBS"; }, 1500);
+        }
+
+        // 缩放滑块(布局页与设置页联动) & 窗口尺寸变化时重绘预览
+        function onScaleInput(sourceId) {
+            const v = document.getElementById(sourceId).value;
+            ['global_scale', 'global_scale2'].forEach(id => { if (id !== sourceId) { const el = document.getElementById(id); if (el) el.value = v; } });
+            document.querySelectorAll('.scale-badge').forEach(b => b.innerText = v + 'x');
+            if (configData) renderPreview();
+        }
+        ['global_scale', 'global_scale2'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', () => onScaleInput(id));
+        });
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => { if (configData) renderPreview(); }, 120);
+        });
+
+        connect();
+    </script>
+</body>
+</html>
