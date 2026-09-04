@@ -232,11 +232,10 @@ class OverlayWindow(QWebEngineView):
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.page().setBackgroundColor(Qt.transparent)
-        self.load(QUrl(f"http://127.0.0.1:{HTTP_PORT}/index.html"))
+        # 💡 删除此处的 self.load(...)，把加载网页的动作推迟到窗口全屏之后
 
     def fill_screen(self):
-        """让透明窗口铺满整个屏幕，交由 HTML 内部自动计算 16:9 比例居中"""
-        # 获取当前屏幕完整的分辨率范围（包含任务栏等区域）
+        """让透明窗口铺满整个屏幕"""
         rect = self.screen().geometry()
         self.setGeometry(rect)
 
@@ -256,10 +255,19 @@ def main():
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
+    # 💡 优化项：优先启动后台常驻服务，确保 HTTP 端口已就绪，避免网页引擎白屏
+    threading.Thread(target=start_http_server, daemon=True).start()
+    threading.Thread(target=start_websocket_server, daemon=True).start()
+
     overlay = OverlayWindow()
-    # 【关键修复】：必须先 show 分配系统句柄，再强制设置全屏尺寸
+    # 1. 先显示窗口，分配系统级别的画面句柄
     overlay.show() 
+    # 2. 强制拉伸，铺满当前屏幕
     overlay.fill_screen()
+    
+    # 3. 🎯 最关键的一步：等窗口的物理尺寸确定为全屏后，再加载网页！
+    # 这样前端 index.html 里的 fitStage() 初始化时获取到的就是完美的 16:9 画幅比例了。
+    overlay.load(QUrl(f"http://127.0.0.1:{HTTP_PORT}/index.html"))
 
     tray = QSystemTrayIcon(create_tray_icon(), app)
     menu = QMenu()
@@ -271,7 +279,6 @@ def main():
             overlay.hide()
             toggle_action.setText("显示屏幕覆盖层")
         else:
-            # 重新显示时，再次确保铺满屏幕（防止期间用户修改了分辨率）
             overlay.show()
             overlay.fill_screen()
             toggle_action.setText("隐藏屏幕覆盖层")
@@ -296,10 +303,6 @@ def main():
 
     tray.setContextMenu(menu)
     tray.show()
-
-    # 启动后台常驻服务
-    threading.Thread(target=start_http_server, daemon=True).start()
-    threading.Thread(target=start_websocket_server, daemon=True).start()
 
     sys.exit(app.exec())
 
